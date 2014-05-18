@@ -18,6 +18,7 @@ Package.on_use(function (api) {
     api.export('VelocityLogs', ['client', 'server']);
 
     api.add_files('lib/main.js', 'server');
+    api.export('Velocity', 'server');
 
     api.add_files('lib/client-report.js', 'client');
     api.add_files('lib/client-report.html', 'client');
