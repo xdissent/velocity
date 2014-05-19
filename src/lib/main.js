@@ -1,17 +1,36 @@
 "use strict";
 
 // TODO Externalize these to a conf file
-var FRAMEWORKS = ['jasmine-unit', 'mocha-web'],
-    SOURCE_CODE_FILE_EXTENSIONS = ['js', 'coffee'],
+var SOURCE_CODE_FILE_EXTENSIONS = ['js', 'coffee'],
     TESTS_DIR = '/tests';
 
 var _ = Npm.require('lodash'),
     path = Npm.require('path'),
     SOURCE_CODE_FILE_EXTENSIONS_REGEX = '.(' + SOURCE_CODE_FILE_EXTENSIONS.join('|') + ')',
-    GENERIC_TEST_REGEX = '-(' + FRAMEWORKS.join('|') + ')' + SOURCE_CODE_FILE_EXTENSIONS_REGEX,
     ABSOLUTE_TESTS_DIR = process.env.PWD + TESTS_DIR;
 
+function frameworkForFile (file) {
+    var test_regex = '-(' + _.keys(Velocity.frameworks).join('|') + ')' + SOURCE_CODE_FILE_EXTENSIONS_REGEX,
+        match = file.match(test_regex);
+    if (match) return match[1];
+    return null;
+}
+
 Velocity = {
+
+    frameworks: {},
+
+    registerFramework: function (name, options, callback) {
+        if (callback == null && 'function' === typeof options) {
+            callback = options;
+            options = {};
+        }
+        Velocity.frameworks[name] = {
+            name: name,
+            options: options,
+            run: Meteor.bindEnvironment(callback)
+        };
+    },
 
     initWatcher: function () {
         return Npm.require('chokidar').watch(ABSOLUTE_TESTS_DIR, {ignored: /[\/\\]\./})
@@ -22,24 +41,27 @@ Velocity = {
                 filePath = path.normalize(filePath);
 
                 var relativeDir = path.relative(ABSOLUTE_TESTS_DIR, path.dirname(filePath)),
-                    filename = path.basename(filePath);
+                    filename = path.basename(filePath),
+                    framework = frameworkForFile(filename);
 
-                if (filename.match(GENERIC_TEST_REGEX)) {
+                if (framework) {
                     VelocityTestFiles.insert({
                         _id: filePath,
                         name: filename,
                         absolutePath: path.join(ABSOLUTE_TESTS_DIR, relativeDir, filename),
                         relativePath: path.join(relativeDir, filename),
-                        targetFramework: _.filter(FRAMEWORKS, function (framework) {
-                            return filename.match('-' + framework + SOURCE_CODE_FILE_EXTENSIONS_REGEX);
-                        })[0],
+                        targetFramework: framework,
                         lastModified: Date.now()
                     });
+                    Velocity.frameworks[framework].run();
                 }
             }))
             .on('change', Meteor.bindEnvironment(function (filePath) {
                 console.log('File', filePath, 'has been changed');
+                var filename = path.basename(filePath),
+                    framework = frameworkForFile(filename);
                 VelocityTestFiles.update(filePath, { $set: {lastModified: Date.now()}});
+                if (framework) Velocity.frameworks[framework].run();
             }))
             .on('unlink', Meteor.bindEnvironment(function (filePath) {
                 console.log('File', filePath, 'has been removed');
@@ -48,6 +70,9 @@ Velocity = {
                 // until we want to optimize
     //            VelocityTestFiles.remove(filePath);
                 Velocity.reset();
+                _.forEach(Velocity.frameworks, function (framework) {
+                    framework.run();
+                });
             }));
     },
 
