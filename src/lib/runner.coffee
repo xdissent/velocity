@@ -34,7 +34,9 @@ class Velocity.Runner.Local extends Velocity.Runner
 # Runs tests remotely via subscribe/publish
 class Velocity.Runner.Remote extends Velocity.Runner
 
-  constructor: (@mirror) -> super()
+  constructor: (@mirror) ->
+    @_subscribed = false
+    super()
 
   _pipe: (src, dest) ->
     piped = false
@@ -50,6 +52,14 @@ class Velocity.Runner.Remote extends Velocity.Runner
   _run: (callback, args...) ->
     @mirror.start (err) =>
       return callback err if err?
+
+      unless @_subscribed
+        @_subscribed = true
+        @mirror.child.once 'close', => @_subscribed = false
+        @mirror.subscribe (msg) ->
+          return unless msg?.cmd in ['resetReports', 'postResult', 'postLog']
+          Velocity[msg.cmd] msg.args...
+
       id = Date.now()
       piped = @_pipe @mirror.child.stdout, process.stdout
 
@@ -64,9 +74,6 @@ class Velocity.Runner.Remote extends Velocity.Runner
       , 60000 # XXX Make this a setting and add to other runners
 
       subscription = (msg) ->
-        switch msg?.cmd
-          when 'resetReports', 'postResult', 'postLog'
-            Velocity[msg.cmd] msg.args...
         return unless msg?.id is id
         cleanup()
         return callback new Error 'Remote error' if msg.result is 'error'
