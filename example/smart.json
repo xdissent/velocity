@@ -4,12 +4,14 @@
       "path": "../src"
     },
     "mocha-web": {
-      "git": "https://github.com/mad-eye/meteor-mocha-web",
-      "branch": "mtr",
+      "git": "https://github.com/xdissent/meteor-mocha-web",
+      "branch": "feature/mirror",
       "-path": "../../meteor-mocha-web"
     },
     "velocity-jasmine-unit": {
-        "-path": "../../velocity-jasmine-unit"
+      "git": "https://github.com/xdissent/velocity-jasmine-unit",
+      "branch": "feature/mirror",
+      "-path": "../../velocity-jasmine-unit"
     },
     "moment": {}
   }
