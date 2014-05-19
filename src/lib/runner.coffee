@@ -83,7 +83,6 @@ class Velocity.Runner.Mirror extends Velocity.Runner.Local
   constructor: (_run, @mirror) ->
     super _run
     @mirror.subscribe (msg) =>
-      @reload msg.file if msg?.command is 'reload'
       return unless msg?.command is 'run'
       @run (err, result) =>
         result = 'error' if err?
