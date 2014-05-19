@@ -1,19 +1,16 @@
 "use strict";
 
-// TODO Externalize these to a conf file
-var SOURCE_CODE_FILE_EXTENSIONS = ['js', 'coffee'],
-    TESTS_DIR = '/tests';
-
 var _ = Npm.require('lodash'),
     path = Npm.require('path'),
-    SOURCE_CODE_FILE_EXTENSIONS_REGEX = '.(' + SOURCE_CODE_FILE_EXTENSIONS.join('|') + ')',
-    ABSOLUTE_TESTS_DIR = process.env.PWD + TESTS_DIR;
+    Glob = Npm.require('glob').Glob,
+    // TODO Externalize these to a conf file
+    SOURCE_CODE_FILE_EXTENSIONS = ['js', 'coffee'],
+    ABSOLUTE_TESTS_DIR = process.env.PWD + '/tests';
 
 function frameworkForFile (file) {
-    var test_regex = '-(' + _.keys(Velocity.frameworks).join('|') + ')' + SOURCE_CODE_FILE_EXTENSIONS_REGEX,
-        match = file.match(test_regex);
-    if (match) return match[1];
-    return null;
+    return _.filter(Velocity.frameworks, function (framework, name) {
+        return framework.glob.minimatch.match(file);
+    })[0];
 }
 
 Velocity = {
@@ -25,15 +22,41 @@ Velocity = {
             callback = options;
             options = {};
         }
-        Velocity.frameworks[name] = {
+
+        options = _.extend({}, options, {
+            watch: '**/*-' + name + '.{' + SOURCE_CODE_FILE_EXTENSIONS.join(',') + '}'
+        });
+
+        var framework = {
             name: name,
             options: options,
-            run: Meteor.bindEnvironment(callback)
+            run: Meteor.bindEnvironment(callback),
+            glob: null,
+            reset: function () {
+                framework.glob = new Glob(path.join(ABSOLUTE_TESTS_DIR, framework.options.watch), {
+                    sync: true,
+                    cwd: ABSOLUTE_TESTS_DIR
+                });
+                _.forEach(framework.glob.found, function (file) {
+                    VelocityTestFiles.insert({
+                        _id: file,
+                        name: path.basename(file),
+                        absolutePath: file,
+                        relativePath: path.relative(ABSOLUTE_TESTS_DIR, file),
+                        targetFramework: name,
+                        lastModified: Date.now()
+                    });
+                });
+            }
         };
+
+        Velocity.frameworks[name] = framework;
+        framework.reset();
+        Meteor.startup(framework.run);
     },
 
     initWatcher: function () {
-        return Npm.require('chokidar').watch(ABSOLUTE_TESTS_DIR, {ignored: /[\/\\]\./})
+        return Npm.require('chokidar').watch(ABSOLUTE_TESTS_DIR, {ignoreInitial: true, ignored: /[\/\\]\./})
             .on('add', Meteor.bindEnvironment(function (filePath) {
 
                 console.log('File', 'has been added', filePath);
@@ -42,7 +65,7 @@ Velocity = {
 
                 var relativeDir = path.relative(ABSOLUTE_TESTS_DIR, path.dirname(filePath)),
                     filename = path.basename(filePath),
-                    framework = frameworkForFile(filename);
+                    framework = frameworkForFile(filePath);
 
                 if (framework) {
                     VelocityTestFiles.insert({
@@ -50,18 +73,18 @@ Velocity = {
                         name: filename,
                         absolutePath: path.join(ABSOLUTE_TESTS_DIR, relativeDir, filename),
                         relativePath: path.join(relativeDir, filename),
-                        targetFramework: framework,
+                        targetFramework: framework.name,
                         lastModified: Date.now()
                     });
-                    Velocity.frameworks[framework].run();
+                    framework.run();
                 }
             }))
             .on('change', Meteor.bindEnvironment(function (filePath) {
                 console.log('File', filePath, 'has been changed');
                 var filename = path.basename(filePath),
-                    framework = frameworkForFile(filename);
+                    framework = frameworkForFile(filePath);
                 VelocityTestFiles.update(filePath, { $set: {lastModified: Date.now()}});
-                if (framework) Velocity.frameworks[framework].run();
+                if (framework) framework.run();
             }))
             .on('unlink', Meteor.bindEnvironment(function (filePath) {
                 console.log('File', filePath, 'has been removed');
@@ -87,6 +110,9 @@ Velocity = {
             result: 'pending'
         });
         Velocity.watcher = Velocity.initWatcher();
+        _.forEach(Velocity.frameworks, function (framework) {
+            framework.reset();
+        });
     },
 
     updateAggregateReports: function () {
