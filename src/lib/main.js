@@ -17,6 +17,9 @@ Velocity = {
 
     frameworks: {},
 
+    // Stores the current mirror instance if any
+    mirror: null,
+
     registerFramework: function (name, options, callback) {
         if (callback == null && 'function' === typeof options) {
             callback = options;
@@ -25,23 +28,40 @@ Velocity = {
 
         options = _.extend({
             watch: '**/*-' + name + '.{' + SOURCE_CODE_FILE_EXTENSIONS.join(',') + '}',
-            mirror: false
+            mirror: false,
+            mirrorName: 'velocity-' + name
         }, options);
 
-        var runner = new Velocity.Runner.Local(Meteor.bindEnvironment(callback));
+        // Bail early for any frameworks other than our own if we're in a mirror
+        if (Mirror.isMirror && Mirror.current !== options.mirrorName) return;
+
+        var runner = null;
+
+        if (options.mirror) {
+            var mirror = new Mirror(options.mirrorName);
+            if (mirror.isMirror) {
+                runner = new Velocity.Runner.Mirror(Meteor.bindEnvironment(callback), mirror);
+                Velocity.mirror = mirror;
+            } else {
+                runner = new Velocity.Runner.Remote(mirror);
+            }
+        } else {
+            runner = new Velocity.Runner.Local(Meteor.bindEnvironment(callback));
+        }
 
         var framework = {
             name: name,
             options: options,
-            mirror: mirror,
             runner: runner,
-            run: runner.run.bind(runner),
+            // Run is a noop inside a mirror
+            run: Velocity.mirror ? function () {} : runner.run.bind(runner),
             glob: null,
             reset: function () {
                 framework.glob = new Glob(path.join(ABSOLUTE_TESTS_DIR, framework.options.watch), {
                     sync: true,
                     cwd: ABSOLUTE_TESTS_DIR
                 });
+                if (Velocity.mirror) return;
                 _.forEach(framework.glob.found, function (file) {
                     VelocityTestFiles.insert({
                         _id: file,
@@ -56,6 +76,10 @@ Velocity = {
         };
 
         Velocity.frameworks[name] = framework;
+
+        // Bail if we're in a mirror
+        if (Velocity.mirror) return;
+
         framework.reset();
         Meteor.startup(framework.run);
     },
@@ -105,6 +129,8 @@ Velocity = {
     },
 
     reset: function () {
+        // Bail if we're in a mirror so we don't get watchers or db ops
+        if (Mirror.isMirror) return;
         if (Velocity.watcher) Velocity.watcher.close();
         VelocityTestFiles.remove({});
         VelocityTestReports.remove({});
@@ -127,6 +153,12 @@ Velocity = {
     },
 
     resetReports: function (options) {
+        // Publish the method call to the main app if we're in the mirror
+        if (Velocity.mirror) {
+            Velocity.mirror.publish({cmd: 'resetReports', args: [options]});
+            return;
+        }
+
         var query = {};
         if (options.framework) {
             query.framework = options.framework;
@@ -142,6 +174,13 @@ Velocity = {
         if (!options || !options.type || !options.message || !options.framework) {
             throw new Error('type, message and framework are required fields.')
         }
+
+        // Publish the method call to the main app if we're in the mirror
+        if (Velocity.mirror) {
+            Velocity.mirror.publish({cmd: 'postLog', args: [options]});
+            return;
+        }
+
         VelocityLogs.insert({
             timestamp: options.timestamp ? options.timestamp : Date.now(),
             type: options.type,
@@ -155,6 +194,13 @@ Velocity = {
         if (!options || !options.id || !options.name || !options.framework || !options.result) {
             throw new Error('id, name, framework and result are required fields.')
         }
+
+        // Publish the method call to the main app if we're in the mirror
+        if (Velocity.mirror) {
+            Velocity.mirror.publish({cmd: 'postResult', args: [options]});
+            return;
+        }
+
         var result = {
             name: options.name,
             framework: options.framework,
