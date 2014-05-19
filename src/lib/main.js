@@ -23,9 +23,10 @@ Velocity = {
             options = {};
         }
 
-        options = _.extend({}, options, {
-            watch: '**/*-' + name + '.{' + SOURCE_CODE_FILE_EXTENSIONS.join(',') + '}'
-        });
+        options = _.extend({
+            watch: '**/*-' + name + '.{' + SOURCE_CODE_FILE_EXTENSIONS.join(',') + '}',
+            mirror: false
+        }, options);
 
         var framework = {
             name: name,
