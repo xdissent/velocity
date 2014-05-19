@@ -28,10 +28,14 @@ Velocity = {
             mirror: false
         }, options);
 
+        var runner = new Velocity.Runner.Local(Meteor.bindEnvironment(callback));
+
         var framework = {
             name: name,
             options: options,
-            run: Meteor.bindEnvironment(callback),
+            mirror: mirror,
+            runner: runner,
+            run: runner.run.bind(runner),
             glob: null,
             reset: function () {
                 framework.glob = new Glob(path.join(ABSOLUTE_TESTS_DIR, framework.options.watch), {

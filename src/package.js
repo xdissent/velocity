@@ -11,6 +11,7 @@ Npm.depends({
 Package.on_use(function (api) {
 
     api.use(['templating', 'amplify'], 'client');
+    api.use('coffeescript', 'server');
 
     api.add_files('lib/collections.js', ['client', 'server']);
     api.export('VelocityTestFiles', ['client', 'server']);
@@ -19,6 +20,7 @@ Package.on_use(function (api) {
     api.export('VelocityLogs', ['client', 'server']);
 
     api.add_files('lib/main.js', 'server');
+    api.add_files('lib/runner.coffee', 'server');
     api.export('Velocity', 'server');
 
     api.add_files('lib/client-report.js', 'client');
