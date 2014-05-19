@@ -11,7 +11,7 @@ Npm.depends({
 Package.on_use(function (api) {
 
     api.use(['templating', 'amplify'], 'client');
-    api.use('coffeescript', 'server');
+    api.use(['coffeescript', 'mirror'], 'server');
 
     api.add_files('lib/collections.js', ['client', 'server']);
     api.export('VelocityTestFiles', ['client', 'server']);
